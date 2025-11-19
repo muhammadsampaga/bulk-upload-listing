@@ -435,8 +435,8 @@
                     </div>
 
                     <div class="col-md-4 mb-3">
-                        <label for="jenis_properti" class="form-label">Jenis Properti</label>
-                        <select class="form-select" id="jenis_properti" name="jenis_properti">
+                        <label for="jenis_properti" class="form-label">Jenis Properti <span class="text-danger">*</span></label>
+                        <select class="form-select" id="jenis_properti" name="jenis_properti" required>
                             <option value="">Pilih Jenis</option>
                             <option value="baru">Baru</option>
                             <option value="second">Second</option>
@@ -480,20 +480,20 @@
                     </div>
 
                     <div class="col-md-6 mb-3">
-                        <label for="gambar_cover" class="form-label"><i class="bi bi-image"></i> Gambar Cover Utama</label>
-                        <input type="file" class="form-control" id="gambar_cover" name="gambar_cover" accept="image/*" onchange="previewCoverImage(event)">
+                        <label for="gambar_cover" class="form-label"><i class="bi bi-image"></i> Gambar Cover Utama <span class="text-danger">*</span></label>
+                        <input type="file" class="form-control" id="gambar_cover" name="gambar_cover" accept="image/*" onchange="previewCoverImage(event)" required>
                         <div class="image-preview-container" id="coverPreview"></div>
                     </div>
 
                     <div class="col-md-6 mb-3">
-                        <label for="gambar_lainnya" class="form-label"><i class="bi bi-images"></i> Gambar Lainnya (Multiple)</label>
-                        <input type="file" class="form-control" id="gambar_lainnya" name="gambar_lainnya" accept="image/*" multiple onchange="previewOtherImages(event)">
+                        <label for="gambar_lainnya" class="form-label"><i class="bi bi-images"></i> Gambar Lainnya (Multiple) <span class="text-danger">*</span></label>
+                        <input type="file" class="form-control" id="gambar_lainnya" name="gambar_lainnya" accept="image/*" multiple onchange="previewOtherImages(event)" required>
                         <div class="image-preview-container" id="otherPreview"></div>
                     </div>
 
                     <div class="col-md-3 mb-3">
-                        <label for="sertifikat" class="form-label">Sertifikat</label>
-                        <select class="form-select" id="sertifikat" name="sertifikat">
+                        <label for="sertifikat" class="form-label">Sertifikat <span class="text-danger">*</span></label>
+                        <select class="form-select" id="sertifikat" name="sertifikat" required>
                             <option value="">Pilih Sertifikat</option>
                             <option value="SHM">SHM - Sertifikat Hak Milik</option>
                             <option value="HGB">HGB - Hak Guna Bangun</option>
@@ -1191,6 +1191,36 @@
         function submitForm() {
             const form = document.getElementById('propertyForm');
             const editMode = form.dataset.editMode === 'true';
+            
+            // Validasi field wajib
+            const jenis_properti = document.getElementById('jenis_properti').value;
+            const sertifikat = document.getElementById('sertifikat').value;
+            const gambar_cover = document.getElementById('gambar_cover').files.length;
+            const gambar_lainnya = document.getElementById('gambar_lainnya').files.length;
+            
+            if (!jenis_properti) {
+                alert('❌ Jenis Properti adalah wajib diisi!');
+                document.getElementById('jenis_properti').focus();
+                return;
+            }
+            
+            if (!sertifikat) {
+                alert('❌ Sertifikat adalah wajib diisi!');
+                document.getElementById('sertifikat').focus();
+                return;
+            }
+            
+            if (!gambar_cover && !editMode) {
+                alert('❌ Gambar Cover Utama adalah wajib diupload!');
+                document.getElementById('gambar_cover').focus();
+                return;
+            }
+            
+            if (!gambar_lainnya && !editMode) {
+                alert('❌ Gambar Lainnya (minimal 1 foto) adalah wajib diupload!');
+                document.getElementById('gambar_lainnya').focus();
+                return;
+            }
             
             // Clean up textarea values to remove excess whitespace/newlines
             document.querySelectorAll('textarea').forEach(textarea => {
