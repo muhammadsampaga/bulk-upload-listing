@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# User uploads
+uploads/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+temp_extract/
+*.log
+*.tmp
+
+# Environment variables
+.env
+config.py
+
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.DS_Store
+.env
+config.py
+*.xlsx
+uploads/
+.vscode/
+.idea/
+
+.venv/
+venv/
+__pycache__/
+*.pyc
+config.py
+.env
+*.xlsx
+uploads/
+render.yaml
