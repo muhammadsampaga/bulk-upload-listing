@@ -8,6 +8,7 @@ env/
 venv/
 ENV/
 .venv
+venv/
 
 # User uploads
 uploads/
@@ -32,32 +33,14 @@ temp_extract/
 .env
 config.py
 
-.venv/
-venv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
+# Build
 *.egg
 *.egg-info/
 dist/
 build/
-.DS_Store
-.env
-config.py
-*.xlsx
-uploads/
-.vscode/
-.idea/
 
-.venv/
-venv/
-__pycache__/
-*.pyc
-config.py
-.env
+# Data files
 *.xlsx
-uploads/
+
+# Config
 render.yaml
