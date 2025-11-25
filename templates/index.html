@@ -669,6 +669,9 @@
                                 <button type="button" class="btn btn-sm btn-info" onclick="editData('{{ tipe }}', '{{ no }}')" title="Edit data">
                                     <i class="bi bi-pencil"></i> Edit
                                 </button>
+                                <button type="button" class="btn btn-sm btn-danger" onclick="deleteData('{{ tipe }}', '{{ no }}')" title="Hapus data">
+                                    <i class="bi bi-trash"></i> Hapus
+                                </button>
                             </td>
                         </tr>
                         {% endfor %}
@@ -1276,6 +1279,34 @@
             
             // Check fields status
             checkAllFieldsStatus();
+        }
+        
+        function deleteData(tipe, no) {
+            if (confirm(`⚠️ Apakah Anda yakin ingin menghapus data ${tipe} No. ${no}?\n\nIni akan:\n- Menghapus data dari Excel\n- Menghapus semua gambar properti ini\n\nTindakan ini TIDAK DAPAT DIBATALKAN!`)) {
+                fetch('/delete-data', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({
+                        tipe_properti: tipe,
+                        no: no
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('✅ Data berhasil dihapus!');
+                        window.location.reload();
+                    } else {
+                        alert('❌ Error: ' + (data.error || 'Gagal menghapus data'));
+                    }
+                })
+                .catch(error => {
+                    alert('❌ Terjadi kesalahan: ' + error.message);
+                });
+            }
         }
         
         function confirmReset() {

@@ -972,6 +972,55 @@ def update_data():
     
     return redirect(url_for('index'))
 
+@app.route('/delete-data', methods=['POST'])
+def delete_data():
+    """Delete a specific property listing"""
+    try:
+        data = request.get_json()
+        tipe_properti = data.get('tipe_properti')
+        no = data.get('no')
+        
+        if not tipe_properti or not no:
+            return jsonify({'success': False, 'error': 'Missing tipe_properti or no'}), 400
+        
+        # Delete from Excel
+        if os.path.exists(EXCEL_FILE):
+            wb = load_workbook(EXCEL_FILE)
+            sheet_name = tipe_properti
+            
+            if sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                
+                # Find and delete the row with matching no
+                row_to_delete = None
+                for row_idx, row in enumerate(ws.iter_rows(min_row=2), start=2):
+                    if row[0].value == no:  # Assuming first column is 'no'
+                        row_to_delete = row_idx
+                        break
+                
+                if row_to_delete:
+                    ws.delete_rows(row_to_delete, 1)
+                    wb.save(EXCEL_FILE)
+        
+        # Delete property folder with images
+        property_folder = os.path.join(UPLOAD_FOLDER, tipe_properti, str(no))
+        if os.path.exists(property_folder):
+            try:
+                shutil.rmtree(property_folder)
+            except Exception as e:
+                print(f"Warning: Could not delete property folder: {str(e)}")
+        
+        # Recreate ZIP file with remaining data
+        try:
+            create_zip()
+        except Exception as e:
+            print(f"Warning: Could not recreate ZIP file: {str(e)}")
+        
+        return jsonify({'success': True, 'message': f'Data {tipe_properti} No. {no} berhasil dihapus'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/reset-all', methods=['POST'])
 def reset_all():
     csrf_token = request.form.get('csrf_token')
