@@ -581,12 +581,18 @@
                 <div id="specificFieldsContainer"></div>
 
                 <div class="text-center mt-4">
-                    <button type="button" class="btn btn-success btn-submit" onclick="submitForm()">
+                    <button type="button" class="btn btn-success btn-submit" onclick="submitForm()" id="submitBtn">
                         <i class="bi bi-check-circle"></i> Simpan Data Properti
                     </button>
                     <button type="button" class="btn btn-secondary ms-2" id="cancelBtn" style="display:none;" onclick="cancelEdit()">
                         <i class="bi bi-x-circle"></i> Batal
                     </button>
+                    <div class="loading-spinner" id="submitLoading" style="margin-top: 15px;">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2 text-muted">Sedang menyimpan data...</p>
+                    </div>
                 </div>
             </form>
         </div>
@@ -1246,6 +1252,15 @@
                 formData.append('no', form.dataset.no);
             }
             
+            // Show loading spinner and disable submit button
+            const submitBtn = document.getElementById('submitBtn');
+            const submitLoading = document.getElementById('submitLoading');
+            const cancelBtn = document.getElementById('cancelBtn');
+            
+            submitBtn.disabled = true;
+            cancelBtn.disabled = true;
+            submitLoading.style.display = 'block';
+            
             fetch(url, {
                 method: method,
                 body: formData
@@ -1257,6 +1272,10 @@
             })
             .catch(error => {
                 alert('Terjadi kesalahan: ' + error.message);
+                // Hide loading and re-enable button on error
+                submitBtn.disabled = false;
+                cancelBtn.disabled = false;
+                submitLoading.style.display = 'none';
             });
         }
         
