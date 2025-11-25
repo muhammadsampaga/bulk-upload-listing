@@ -976,9 +976,14 @@ def update_data():
 def delete_data():
     """Delete a specific property listing"""
     try:
+        # Check CSRF token from header
+        csrf_token = request.headers.get('X-CSRF-Token')
+        if not csrf_token or not validate_csrf_token(csrf_token):
+            return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 403
+        
         data = request.get_json()
-        tipe_properti = data.get('tipe_properti')
-        no = data.get('no')
+        tipe_properti = data.get('tipe_properti', '').strip()
+        no = str(data.get('no', '')).strip()
         
         if not tipe_properti or not no:
             return jsonify({'success': False, 'error': 'Missing tipe_properti or no'}), 400
@@ -992,15 +997,21 @@ def delete_data():
                 ws = wb[sheet_name]
                 
                 # Find and delete the row with matching no
-                row_to_delete = None
-                for row_idx, row in enumerate(ws.iter_rows(min_row=2), start=2):
-                    if row[0].value == no:  # Assuming first column is 'no'
-                        row_to_delete = row_idx
-                        break
+                # The first column is 'no' (with index 1 in openpyxl, 0-based is cell column A)
+                rows_to_delete = []
+                for row_idx in range(2, ws.max_row + 1):  # Start from row 2 (skip header)
+                    cell_value = ws.cell(row=row_idx, column=1).value  # Column A is 'no'
+                    if cell_value and str(cell_value).strip() == no:
+                        rows_to_delete.append(row_idx)
                 
-                if row_to_delete:
-                    ws.delete_rows(row_to_delete, 1)
+                # Delete rows in reverse order to maintain correct indices
+                for row_idx in sorted(rows_to_delete, reverse=True):
+                    ws.delete_rows(row_idx, 1)
+                
+                if rows_to_delete:
                     wb.save(EXCEL_FILE)
+            
+            wb.close()
         
         # Delete property folder with images
         property_folder = os.path.join(UPLOAD_FOLDER, tipe_properti, str(no))
@@ -1019,6 +1030,9 @@ def delete_data():
         return jsonify({'success': True, 'message': f'Data {tipe_properti} No. {no} berhasil dihapus'})
     
     except Exception as e:
+        import traceback
+        print(f"Error in delete_data: {str(e)}")
+        print(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/reset-all', methods=['POST'])
