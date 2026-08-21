@@ -7,6 +7,7 @@ import zipfile
 import shutil
 import json
 import secrets
+import re
 from openai import OpenAI
 from datetime import datetime
 
@@ -41,9 +42,74 @@ app.jinja_env.filters['format_harga'] = format_harga
 
 UPLOAD_FOLDER = 'uploads'
 EXCEL_FILE = os.path.join(UPLOAD_FOLDER, 'mass_upload_template.xlsx')
+AREA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'areas.xlsx')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+def normalize_area_text(value):
+    """Normalize user/AI location text for deterministic matching."""
+    return ' '.join(re.sub(r'[^\w]+', ' ', str(value or '').casefold()).split())
+
+def normalize_admin_text(value):
+    return re.sub(r'^(kota|kabupaten|kab|provinsi|prov)\s+', '', normalize_area_text(value))
+
+def normalize_area_id(value):
+    """Keep numeric Excel IDs stable (for example 449.0 -> 449)."""
+    text = str(value or '').strip()
+    return text[:-2] if text.endswith('.0') and text[:-2].isdigit() else text
+
+def load_areas():
+    """Load the canonical area catalog once at process startup."""
+    workbook = load_workbook(AREA_FILE, read_only=True, data_only=True)
+    worksheet = workbook.active
+    areas = []
+    for province, city, area_id, name in worksheet.iter_rows(min_row=2, values_only=True):
+        if area_id is None or not name:
+            continue
+        area = {
+            'id': normalize_area_id(area_id),
+            'name': str(name).strip(),
+            'city': str(city or '').strip(),
+            'province': str(province or '').strip(),
+        }
+        area['label'] = f"{area['name']}, {area['city']}, {area['province']} — ID {area['id']}"
+        area['_search'] = normalize_area_text(f"{area['id']} {area['name']} {area['city']} {area['province']}")
+        areas.append(area)
+    workbook.close()
+    return areas
+
+AREAS = load_areas()
+AREAS_BY_ID = {area['id']: area for area in AREAS}
+AREAS_BY_NAME = {}
+for area in AREAS:
+    AREAS_BY_NAME.setdefault(normalize_area_text(area['name']), []).append(area)
+
+def public_area(area):
+    return {key: area[key] for key in ('id', 'name', 'city', 'province', 'label')}
+
+def resolve_area(area_name='', city='', province=''):
+    """Resolve an ID or unique area/city/province combination without guessing."""
+    area_id = normalize_area_id(area_name)
+    if area_id in AREAS_BY_ID:
+        return AREAS_BY_ID[area_id]
+
+    parts = [part.strip() for part in str(area_name).split(',')]
+    normalized_name = normalize_area_text(parts[0])
+    city = city or (parts[1] if len(parts) > 1 else '')
+    province = province or (parts[2] if len(parts) > 2 else '')
+    candidates = list(AREAS_BY_NAME.get(normalized_name, ()))
+    for value, key in ((city, 'city'), (province, 'province')):
+        normalized_value = normalize_admin_text(value)
+        if normalized_value:
+            candidates = [area for area in candidates if normalize_admin_text(area[key]) == normalized_value]
+    return candidates[0] if len(candidates) == 1 else None
+
+def area_display(value):
+    area = AREAS_BY_ID.get(normalize_area_id(value))
+    return f"{area['name']}, {area['city']} (ID {area['id']})" if area else value
+
+app.jinja_env.filters['area_display'] = area_display
 
 def get_zip_filename():
     """Generate ZIP filename with human-readable timestamp: upl_{DD-MMM-YYYY_HH-MM-SS}"""
@@ -263,6 +329,7 @@ def generate_professional_listing(data, tipe_properti):
         context_parts = [f"Tipe Properti: {tipe_properti}"]
         
         # Add key specifications
+        area = AREAS_BY_ID.get(normalize_area_id(data.get('id_area', '')))
         specs = {
             'luas_tanah': data.get('luas_tanah', ''),
             'luas_bangunan': data.get('luas_bangunan', ''),
@@ -273,7 +340,7 @@ def generate_professional_listing(data, tipe_properti):
             'harga': data.get('harga', ''),
             'kategori': data.get('kategori', ''),
             'periode_sewa': data.get('periode_sewa', ''),
-            'id_area': data.get('id_area', ''),
+            'lokasi': area['label'] if area else '',
             'selling_point': data.get('selling_point', ''),
             'fasilitas_lingkungan': data.get('fasilitas_lingkungan', ''),
             'fasilitas_ruko': data.get('fasilitas_ruko', ''),
@@ -366,7 +433,9 @@ FIELD GLOBAL (Semua Tipe Properti):
 - tipe_properti: (rumah, apartemen, tanah, ruko, villa, kost, hotel, pabrik, gudang, perkantoran, ruang_usaha, gedung)
 - kategori: (dijual, disewa)
 - jenis_properti: (baru, second, aset_bank)
-- id_area: nama lokasi/area
+- location_area: nama area/kecamatan/kelurahan terkecil yang disebutkan, contoh "Renon"
+- location_city: nama kota/kabupaten, contoh "Denpasar"
+- location_province: nama provinsi, contoh "Bali"
 - harga: angka saja dalam rupiah (misal 5000000 untuk 5 juta)
 - periode_sewa: (per hari, per bulan, per tahun) - hanya jika kategori=disewa - TANPA UNDERSCORE
 - judul_iklan: max 52 karakter, menarik dan singkat, berisi info tipe + lokasi + harga
@@ -483,6 +552,15 @@ PENTING:
         )
         
         result = json.loads(response.choices[0].message.content)
+        area = resolve_area(
+            result.get('location_area', ''),
+            result.get('location_city', ''),
+            result.get('location_province', '')
+        )
+        result['id_area'] = area['id'] if area else ''
+        result['area'] = public_area(area) if area else None
+        if any(result.get(key) for key in ('location_area', 'location_city', 'location_province')) and not area:
+            result['area_warning'] = 'Lokasi AI belum cocok secara unik. Silakan pilih area dari hasil pencarian.'
         return result
     except Exception as e:
         error_msg = f"AI Parser Error: {str(e)}"
@@ -756,6 +834,23 @@ def index():
     data = read_excel_data()
     return render_template('index.html', data=data)
 
+@app.route('/areas/search')
+def search_areas():
+    query = request.args.get('q', '').strip()[:100]
+    normalized_query = normalize_area_text(query)
+    if len(normalized_query) < 2:
+        return jsonify([])
+
+    tokens = normalized_query.split()
+    matches = [area for area in AREAS if all(token in area['_search'] for token in tokens)]
+    matches.sort(key=lambda area: (
+        not normalize_area_text(area['name']).startswith(normalized_query),
+        not normalize_area_text(area['city']).startswith(normalized_query),
+        len(area['name']),
+        int(area['id']) if area['id'].isdigit() else area['id'],
+    ))
+    return jsonify([public_area(area) for area in matches[:20]])
+
 @app.route('/parse-description', methods=['POST'])
 def parse_description():
     try:
@@ -765,7 +860,7 @@ def parse_description():
         
         description = data.get('description', '')
         
-        if not description:
+        if not isinstance(description, str) or not description.strip():
             return jsonify({'error': 'Deskripsi tidak boleh kosong'}), 400
         
         parsed_data = parse_listing_with_ai(description)
@@ -802,6 +897,7 @@ def generate_listing():
 def submit():
     try:
         tipe_properti_raw = request.form.get('tipe_properti', '').strip()
+        id_area = normalize_area_id(request.form.get('id_area', ''))
         
         tipe_properti = validate_tipe_properti(tipe_properti_raw) if tipe_properti_raw else None
         if tipe_properti_raw and not validate_tipe_properti(tipe_properti_raw):
@@ -810,6 +906,10 @@ def submit():
         
         if not tipe_properti:
             flash('Tipe properti harus dipilih', 'danger')
+            return redirect(url_for('index'))
+
+        if id_area and id_area not in AREAS_BY_ID:
+            flash('ID area tidak valid. Silakan pilih area dari hasil pencarian.', 'danger')
             return redirect(url_for('index'))
         
         # Get next number for this specific property type
@@ -847,7 +947,7 @@ def submit():
             'tipe_properti': tipe_properti,
             'kategori': request.form.get('kategori', ''),
             'jenis_properti': request.form.get('jenis_properti', ''),
-            'id_area': request.form.get('id_area', ''),
+            'id_area': id_area,
             'harga': request.form.get('harga', ''),
             'periode_sewa': request.form.get('periode_sewa', ''),
             'judul_iklan': request.form.get('judul_iklan', ''),
@@ -912,6 +1012,8 @@ def load_data(tipe, no):
                 for key, value in item.items():
                     new_key = key.lower().replace(' ', '_')
                     result[new_key] = value
+                area = AREAS_BY_ID.get(normalize_area_id(result.get('id_area', '')))
+                result['area'] = public_area(area) if area else None
                 return jsonify(result)
         
         return jsonify({'error': f'Data tidak ditemukan untuk {tipe} nomor {no}'}), 404
@@ -924,6 +1026,7 @@ def update_data():
     try:
         tipe_properti_raw = request.form.get('tipe_properti', '').strip()
         no = request.form.get('no', '').strip()
+        id_area = normalize_area_id(request.form.get('id_area', ''))
         
         tipe_properti = validate_tipe_properti(tipe_properti_raw) if tipe_properti_raw else None
         if tipe_properti_raw and not validate_tipe_properti(tipe_properti_raw):
@@ -932,6 +1035,10 @@ def update_data():
         
         if not tipe_properti or not no:
             flash('Tipe properti dan nomor harus ada', 'danger')
+            return redirect(url_for('index'))
+
+        if id_area and id_area not in AREAS_BY_ID:
+            flash('ID area tidak valid. Silakan pilih area dari hasil pencarian.', 'danger')
             return redirect(url_for('index'))
         
         # Read current data to delete old row
@@ -943,7 +1050,7 @@ def update_data():
             'tipe_properti': tipe_properti,
             'kategori': request.form.get('kategori', ''),
             'jenis_properti': request.form.get('jenis_properti', ''),
-            'id_area': request.form.get('id_area', ''),
+            'id_area': id_area,
             'harga': request.form.get('harga', ''),
             'periode_sewa': request.form.get('periode_sewa', ''),
             'judul_iklan': request.form.get('judul_iklan', ''),

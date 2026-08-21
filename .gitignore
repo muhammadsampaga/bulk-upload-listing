@@ -41,6 +41,7 @@ build/
 
 # Data files
 *.xlsx
+!data/areas.xlsx
 
 # Config
 render.yaml
