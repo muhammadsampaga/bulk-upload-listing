@@ -49,7 +49,7 @@ Setelah AI Parser, field berikut HARUS terisi:
    - Field khusus harus muncul SETELAH pilih tipe properti
 
 3. **Jika response AI tidak include field khusus**:
-   - Check OpenAI API key sudah set
+   - Check `QWEN_API_KEY` sudah set
    - Lihat response di browser developer tools (Network tab)
 
 ## Perbaikan yang Sudah Dilakukan

@@ -4,7 +4,7 @@
 Website berbasis Python Flask untuk melakukan mass upload data iklan properti. Aplikasi ini memungkinkan pengguna mengisi form data properti, mengunggah gambar, dan sistem otomatis membuat file Excel dan ZIP berisi semua data untuk diupload ke sistem lain.
 
 ## Features
-- **AI Parser with ChatGPT**: Paste deskripsi properti free text, AI otomatis mengisi semua form
+- **AI Parser with Qwen**: Paste deskripsi properti free text, AI otomatis mengisi semua form
 - Form input lengkap dengan 24 field data properti (semua opsional)
 - Auto-increment nomor iklan
 - Upload gambar cover utama dan gambar tambahan (multiple)
@@ -38,7 +38,7 @@ Website berbasis Python Flask untuk melakukan mass upload data iklan properti. A
 
 ## Technology Stack
 - **Backend**: Python 3.11, Flask 3.1.2
-- **AI**: OpenAI 2.7.2 (ChatGPT GPT-5)
+- **AI**: Qwen `qwen3.8-max` melalui OpenAI-compatible API
 - **Excel**: openpyxl 3.1.5
 - **Frontend**: Bootstrap 5.3.0, Bootstrap Icons, HTML5, CSS3, JavaScript
 - **File Handling**: Werkzeug (built-in with Flask), zipfile (Python standard library)
@@ -50,7 +50,7 @@ Dependencies are managed with uv and installed automatically:
 - openai
 
 Required Environment Variables (add via Replit Secrets):
-- `OPENAI_API_KEY`: Your OpenAI API key for ChatGPT integration
+- `QWEN_API_KEY`: Your Qwen API key
 - `SESSION_SECRET`: Flask session secret key
 
 ## Running the Application
@@ -65,7 +65,7 @@ Access the application at the Replit webview URL.
 
 ### 1. AI Parser (Optional)
 - User can paste free text property description
-- AI (ChatGPT GPT-5) automatically extracts information and fills the form
+- Qwen automatically extracts information and fills the form
 - All extracted fields can be edited manually after parsing
 
 ### 2. Data Entry
@@ -135,13 +135,13 @@ Access the application at the Replit webview URL.
   - Implemented whitelist validation and absolute path checking
   
 - 2025-11-13: AI Parser and UX Improvements
-  - Integrated OpenAI ChatGPT (GPT-5) for automatic form filling from free text
+  - Integrated Qwen for automatic form filling from free text
   - Added AI parser endpoint that extracts property details from descriptions
   - Removed required validation from all form fields (now fully optional)
   - Implemented image preview functionality for uploaded images
   - Complete UI/UX redesign with gradient background and modern styling
   - Added Bootstrap Icons throughout the interface
-  - Enhanced error handling for OpenAI API key validation
+  - Enhanced error handling for Qwen API key validation
   - Improved user feedback with loading spinners and status messages
 
 - 2025-11-13: Added Complete Reset Functionality

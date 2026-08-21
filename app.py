@@ -235,24 +235,28 @@ ALLOWED_TIPE_PROPERTI = {
     'kost', 'hotel', 'pabrik', 'gudang', 'perkantoran', 'ruang_usaha', 'ruang usaha'
 }
 
-# Load OpenAI API key: prefer environment variable, otherwise fall back to local config.py
-CONFIG_OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
-try:
-    # optional local config file (create config.py with OPENAI_API_KEY = 'sk-...')
-    from config import OPENAI_API_KEY as CONFIG_OPENAI_API_KEY  # type: ignore
-except Exception:
-    CONFIG_OPENAI_API_KEY = None
+# Qwen exposes an OpenAI-compatible API, so the existing SDK can be reused.
+QWEN_BASE_URL = 'https://ws-ruvjhilrgjncp85z.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1'
+QWEN_MODEL = 'qwen3.8-max'
 
-def get_openai_client():
-    """Get or initialize OpenAI client (lazy loading for Render compatibility)"""
-    api_key = os.environ.get('OPENAI_API_KEY') or CONFIG_OPENAI_API_KEY
+# Load Qwen API key: prefer environment variable, otherwise fall back to local config.py
+CONFIG_QWEN_API_KEY = os.environ.get('QWEN_API_KEY')
+try:
+    # optional local config file (create config.py with QWEN_API_KEY = '...')
+    from config import QWEN_API_KEY as CONFIG_QWEN_API_KEY  # type: ignore
+except Exception:
+    CONFIG_QWEN_API_KEY = None
+
+def get_qwen_client():
+    """Get a Qwen client through its OpenAI-compatible endpoint."""
+    api_key = os.environ.get('QWEN_API_KEY') or CONFIG_QWEN_API_KEY
     if not api_key:
-        raise Exception("OpenAI API key tidak tersedia. Silakan tambahkan OPENAI_API_KEY di environment variables.")
-    return OpenAI(api_key=api_key)
+        raise Exception("Qwen API key tidak tersedia. Silakan tambahkan QWEN_API_KEY di environment variables.")
+    return OpenAI(api_key=api_key, base_url=QWEN_BASE_URL)
 
 def generate_professional_listing(data, tipe_properti):
     """Generate professional judul_iklan and deskripsi_iklan using AI"""
-    client = get_openai_client()
+    client = get_qwen_client()
     
     try:
         # Build context from form data
@@ -289,7 +293,7 @@ def generate_professional_listing(data, tipe_properti):
         context = "\n".join(context_parts)
         
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=QWEN_MODEL,
             messages=[
                 {
                     "role": "system",
@@ -346,13 +350,11 @@ Respond ONLY dengan JSON object mengandung:
         return {'error': error_msg}
 
 def parse_listing_with_ai(description):
-    client = get_openai_client()
+    client = get_qwen_client()
     
     try:
-        # the newest OpenAI model is "gpt-5" which was released August 7, 2025.
-        # do not change this unless explicitly requested by the user
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=QWEN_MODEL,
             messages=[
                 {
                     "role": "system",
