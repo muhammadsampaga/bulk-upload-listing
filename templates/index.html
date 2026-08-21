@@ -769,9 +769,9 @@
             areaSearch.setCustomValidity('');
             clearTimeout(areaSearchTimer);
             areaSearchRequest?.abort();
+            closeAreaResults();
             const query = areaSearch.value.trim();
             if (query.length < 2) {
-                closeAreaResults();
                 return;
             }
             areaSearchTimer = setTimeout(async () => {
