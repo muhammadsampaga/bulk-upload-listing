@@ -1,4 +1,6 @@
-from app import AREAS, app, resolve_area
+import os
+
+from app import AREAS, app, get_dashscope_base_url, resolve_area
 
 
 def test_areas():
@@ -13,6 +15,22 @@ def test_areas():
         assert response.get_json()[0]['id'] == '449'
 
 
+def test_dashscope_base_url():
+    original_url = os.environ.get('SG_DASHSCOPE_URL')
+    try:
+        os.environ['SG_DASHSCOPE_URL'] = 'https://example.com/api/v1/'
+        assert get_dashscope_base_url() == 'https://example.com/compatible-mode/v1'
+
+        os.environ['SG_DASHSCOPE_URL'] = 'https://example.com/compatible-mode/v1'
+        assert get_dashscope_base_url() == 'https://example.com/compatible-mode/v1'
+    finally:
+        if original_url is None:
+            os.environ.pop('SG_DASHSCOPE_URL', None)
+        else:
+            os.environ['SG_DASHSCOPE_URL'] = original_url
+
+
 if __name__ == '__main__':
     test_areas()
+    test_dashscope_base_url()
     print('Area checks passed')

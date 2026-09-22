@@ -301,8 +301,16 @@ ALLOWED_TIPE_PROPERTI = {
     'kost', 'hotel', 'pabrik', 'gudang', 'perkantoran', 'ruang_usaha', 'ruang usaha'
 }
 
+def get_dashscope_base_url():
+    """Use the OpenAI-compatible path even when production stores the native API URL."""
+    url = os.environ.get('SG_DASHSCOPE_URL', '').strip().rstrip('/')
+    if url.endswith('/api/v1'):
+        return f"{url[:-len('/api/v1')]}/compatible-mode/v1"
+    return url
+
+
 # DashScope exposes an OpenAI-compatible API, so the existing SDK can be reused.
-DASHSCOPE_BASE_URL = os.environ.get('SG_DASHSCOPE_URL', '').rstrip('/')
+DASHSCOPE_BASE_URL = get_dashscope_base_url()
 QWEN_MODEL = 'qwen3.8-max'
 
 def get_qwen_client():
