@@ -8,8 +8,9 @@ import shutil
 import json
 import secrets
 import re
-from openai import OpenAI
 from datetime import datetime
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SESSION_SECRET', 'dev-secret-key')
@@ -302,30 +303,73 @@ ALLOWED_TIPE_PROPERTI = {
 }
 
 def get_dashscope_base_url():
-    """Use the OpenAI-compatible path even when production stores the native API URL."""
+    """Read the native DashScope API base URL from the environment."""
     url = os.environ.get('SG_DASHSCOPE_URL', '').strip().rstrip('/')
-    if url.endswith('/api/v1'):
-        return f"{url[:-len('/api/v1')]}/compatible-mode/v1"
+    if url.endswith('/compatible-mode/v1'):
+        return f"{url[:-len('/compatible-mode/v1')]}/api/v1"
     return url
 
 
-# DashScope exposes an OpenAI-compatible API, so the existing SDK can be reused.
 DASHSCOPE_BASE_URL = get_dashscope_base_url()
 QWEN_MODEL = 'qwen3.8-max'
+DASHSCOPE_GENERATION_URL = f'{DASHSCOPE_BASE_URL}/services/aigc/multimodal-generation/generation'
 
-def get_qwen_client():
-    """Get a Qwen client through the configured DashScope endpoint."""
+
+def call_qwen(messages):
+    """Call Qwen through the native DashScope endpoint configured in production."""
     api_key = os.environ.get('SG_DASHSCOPE_API_KEY')
     if not api_key:
         raise Exception("DashScope API key tidak tersedia. Silakan tambahkan SG_DASHSCOPE_API_KEY di environment variables.")
     if not DASHSCOPE_BASE_URL:
         raise Exception("DashScope URL tidak tersedia. Silakan tambahkan SG_DASHSCOPE_URL di environment variables.")
-    return OpenAI(api_key=api_key, base_url=DASHSCOPE_BASE_URL)
+
+    payload = {
+        'model': QWEN_MODEL,
+        'input': {
+            'messages': [
+                {
+                    'role': message['role'],
+                    'content': [{'text': message['content']}],
+                }
+                for message in messages
+            ]
+        },
+        'parameters': {
+            'result_format': 'message',
+            'response_format': {'type': 'json_object'},
+        },
+    }
+    request = Request(
+        DASHSCOPE_GENERATION_URL,
+        data=json.dumps(payload).encode('utf-8'),
+        headers={
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json',
+        },
+        method='POST',
+    )
+
+    try:
+        with urlopen(request, timeout=120) as response:
+            result = json.load(response)
+    except HTTPError as error:
+        error_body = error.read().decode('utf-8', errors='replace')[:500]
+        raise Exception(f'DashScope API error ({error.code}): {error_body}') from error
+    except URLError as error:
+        raise Exception(f'DashScope connection error: {error.reason}') from error
+
+    try:
+        content = result['output']['choices'][0]['message']['content']
+        if isinstance(content, list):
+            content = ''.join(item.get('text', '') for item in content if isinstance(item, dict))
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError('responsenya tidak berisi content')
+        return content
+    except (KeyError, IndexError, TypeError, ValueError) as error:
+        raise Exception(f'Respons DashScope tidak valid: {result}') from error
 
 def generate_professional_listing(data, tipe_properti):
     """Generate professional judul_iklan and deskripsi_iklan using AI"""
-    client = get_qwen_client()
-    
     try:
         # Build context from form data
         context_parts = [f"Tipe Properti: {tipe_properti}"]
@@ -361,9 +405,7 @@ def generate_professional_listing(data, tipe_properti):
         
         context = "\n".join(context_parts)
         
-        response = client.chat.completions.create(
-            model=QWEN_MODEL,
-            messages=[
+        response_content = call_qwen([
                 {
                     "role": "system",
                     "content": """Kamu adalah agen properti profesional dan marketer terbaik yang sangat memahami cara menjual properti.
@@ -403,11 +445,9 @@ Respond ONLY dengan JSON object mengandung:
                     "role": "user",
                     "content": f"Buatkan judul dan deskripsi profesional untuk properti dengan detail berikut:\n\n{context}"
                 }
-            ],
-            response_format={"type": "json_object"}
-        )
+            ])
         
-        result = json.loads(response.choices[0].message.content)
+        result = json.loads(response_content)
         return {
             'judul_iklan': result.get('judul_iklan', ''),
             'kalimat_pembuka': result.get('kalimat_pembuka', ''),
@@ -419,12 +459,8 @@ Respond ONLY dengan JSON object mengandung:
         return {'error': error_msg}
 
 def parse_listing_with_ai(description):
-    client = get_qwen_client()
-    
     try:
-        response = client.chat.completions.create(
-            model=QWEN_MODEL,
-            messages=[
+        response_content = call_qwen([
                 {
                     "role": "system",
                     "content": """Kamu adalah asisten AI yang membantu mengekstrak informasi properti dari deskripsi teks.
@@ -549,11 +585,9 @@ PENTING:
                     "role": "user",
                     "content": f"Deskripsi properti: {description}"
                 }
-            ],
-            response_format={"type": "json_object"}
-        )
+            ])
         
-        result = json.loads(response.choices[0].message.content)
+        result = json.loads(response_content)
         area = resolve_area(
             result.get('location_area', ''),
             result.get('location_city', ''),

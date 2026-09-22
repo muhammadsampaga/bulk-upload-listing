@@ -38,7 +38,7 @@ Website berbasis Python Flask untuk melakukan mass upload data iklan properti. A
 
 ## Technology Stack
 - **Backend**: Python 3.11, Flask 3.1.2
-- **AI**: Qwen `qwen3.8-max` melalui DashScope OpenAI-compatible API
+- **AI**: Qwen `qwen3.8-max` melalui DashScope API
 - **Excel**: openpyxl 3.1.5
 - **Frontend**: Bootstrap 5.3.0, Bootstrap Icons, HTML5, CSS3, JavaScript
 - **File Handling**: Werkzeug (built-in with Flask), zipfile (Python standard library)
@@ -51,7 +51,7 @@ Dependencies are managed with uv and installed automatically:
 
 Required Environment Variables (add via Replit Secrets):
 - `SG_DASHSCOPE_API_KEY`: DashScope API key
-- `SG_DASHSCOPE_URL`: DashScope API URL; `/api/v1` is converted automatically to the OpenAI-compatible path
+- `SG_DASHSCOPE_URL`: DashScope native API base URL, for example `https://.../api/v1`
 - `SESSION_SECRET`: Flask session secret key
 
 ## Running the Application
@@ -124,7 +124,7 @@ Access the application at the Replit webview URL.
 
 ## Environment Variables
 - `SG_DASHSCOPE_API_KEY`: DashScope API key
-- `SG_DASHSCOPE_URL`: DashScope API URL; `/api/v1` is converted automatically to the OpenAI-compatible path
+- `SG_DASHSCOPE_URL`: DashScope native API base URL, for example `https://.../api/v1`
 - `SESSION_SECRET`: Flask session secret key (configured in Replit)
 
 ## Recent Changes
