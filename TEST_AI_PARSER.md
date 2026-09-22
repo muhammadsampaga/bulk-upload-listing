@@ -49,7 +49,7 @@ Setelah AI Parser, field berikut HARUS terisi:
    - Field khusus harus muncul SETELAH pilih tipe properti
 
 3. **Jika response AI tidak include field khusus**:
-   - Check `QWEN_API_KEY` sudah set
+    - Check `SG_DASHSCOPE_API_KEY` dan `SG_DASHSCOPE_URL` sudah set
    - Lihat response di browser developer tools (Network tab)
 
 ## Perbaikan yang Sudah Dilakukan

@@ -301,24 +301,18 @@ ALLOWED_TIPE_PROPERTI = {
     'kost', 'hotel', 'pabrik', 'gudang', 'perkantoran', 'ruang_usaha', 'ruang usaha'
 }
 
-# Qwen exposes an OpenAI-compatible API, so the existing SDK can be reused.
-QWEN_BASE_URL = 'https://ws-ruvjhilrgjncp85z.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1'
+# DashScope exposes an OpenAI-compatible API, so the existing SDK can be reused.
+DASHSCOPE_BASE_URL = os.environ.get('SG_DASHSCOPE_URL', '').rstrip('/')
 QWEN_MODEL = 'qwen3.8-max'
 
-# Load Qwen API key: prefer environment variable, otherwise fall back to local config.py
-CONFIG_QWEN_API_KEY = os.environ.get('QWEN_API_KEY')
-try:
-    # optional local config file (create config.py with QWEN_API_KEY = '...')
-    from config import QWEN_API_KEY as CONFIG_QWEN_API_KEY  # type: ignore
-except Exception:
-    CONFIG_QWEN_API_KEY = None
-
 def get_qwen_client():
-    """Get a Qwen client through its OpenAI-compatible endpoint."""
-    api_key = os.environ.get('QWEN_API_KEY') or CONFIG_QWEN_API_KEY
+    """Get a Qwen client through the configured DashScope endpoint."""
+    api_key = os.environ.get('SG_DASHSCOPE_API_KEY')
     if not api_key:
-        raise Exception("Qwen API key tidak tersedia. Silakan tambahkan QWEN_API_KEY di environment variables.")
-    return OpenAI(api_key=api_key, base_url=QWEN_BASE_URL)
+        raise Exception("DashScope API key tidak tersedia. Silakan tambahkan SG_DASHSCOPE_API_KEY di environment variables.")
+    if not DASHSCOPE_BASE_URL:
+        raise Exception("DashScope URL tidak tersedia. Silakan tambahkan SG_DASHSCOPE_URL di environment variables.")
+    return OpenAI(api_key=api_key, base_url=DASHSCOPE_BASE_URL)
 
 def generate_professional_listing(data, tipe_properti):
     """Generate professional judul_iklan and deskripsi_iklan using AI"""
