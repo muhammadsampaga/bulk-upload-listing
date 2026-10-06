@@ -304,7 +304,9 @@ ALLOWED_TIPE_PROPERTI = {
 
 def get_dashscope_base_url():
     """Read the native DashScope API base URL from the environment."""
-    url = os.environ.get('SG_DASHSCOPE_URL', '').strip().rstrip('/')
+    # Take only the http(s) URL so stray text in the variable never reaches the request or the logs
+    match = re.search(r'https?://[^\s\'"]+', os.environ.get('SG_DASHSCOPE_URL', ''))
+    url = match.group(0).rstrip('/') if match else ''
     if url.endswith('/compatible-mode/v1'):
         return f"{url[:-len('/compatible-mode/v1')]}/api/v1"
     return url
@@ -317,13 +319,26 @@ DASHSCOPE_GENERATION_URL = f'{DASHSCOPE_BASE_URL}/services/aigc/multimodal-gener
 AI_ERROR_MESSAGE = 'Layanan AI sedang bermasalah. Silakan coba lagi nanti.'
 
 
+def get_qwen_api_key():
+    return (os.environ.get('QWEN_API_KEY') or os.environ.get('SG_DASHSCOPE_API_KEY') or '').strip()
+
+
+def redact_secrets(text):
+    """Mask API keys before an error message is written to the logs."""
+    text = str(text)
+    api_key = get_qwen_api_key()
+    if api_key:
+        text = re.sub(re.escape(api_key), 'sk-***', text, flags=re.IGNORECASE)
+    return re.sub(r'sk-[A-Za-z0-9._\-]{6,}', 'sk-***', text, flags=re.IGNORECASE)
+
+
 def call_qwen(messages):
     """Call Qwen through the native DashScope endpoint configured in production."""
-    api_key = os.environ.get('QWEN_API_KEY') or os.environ.get('SG_DASHSCOPE_API_KEY')
+    api_key = get_qwen_api_key()
     if not api_key:
         raise Exception("Qwen API key tidak tersedia. Silakan tambahkan QWEN_API_KEY di environment variables.")
     if not DASHSCOPE_BASE_URL:
-        raise Exception("DashScope URL tidak tersedia. Silakan tambahkan SG_DASHSCOPE_URL di environment variables.")
+        raise Exception("DashScope URL tidak tersedia atau tidak valid. SG_DASHSCOPE_URL harus berisi URL https://.../api/v1.")
 
     payload = {
         'model': QWEN_MODEL,
@@ -456,7 +471,7 @@ Respond ONLY dengan JSON object mengandung:
             'deskripsi_iklan': result.get('deskripsi_iklan', '')
         }
     except Exception as e:
-        print(f"Professional Listing Generator Error: {str(e)}")
+        print(f"Professional Listing Generator Error: {redact_secrets(e)}")
         return {'error': AI_ERROR_MESSAGE}
 
 def parse_listing_with_ai(description):
@@ -600,7 +615,7 @@ PENTING:
             result['area_warning'] = 'Lokasi AI belum cocok secara unik. Silakan pilih area dari hasil pencarian.'
         return result
     except Exception as e:
-        print(f"AI Parser Error: {str(e)}")
+        print(f"AI Parser Error: {redact_secrets(e)}")
         return {'error': AI_ERROR_MESSAGE}
 
 def allowed_file(filename):
