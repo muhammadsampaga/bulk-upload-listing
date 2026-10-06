@@ -317,9 +317,9 @@ DASHSCOPE_GENERATION_URL = f'{DASHSCOPE_BASE_URL}/services/aigc/multimodal-gener
 
 def call_qwen(messages):
     """Call Qwen through the native DashScope endpoint configured in production."""
-    api_key = os.environ.get('QWEN_API_KEY') or os.environ.get('SG_DASHSCOPE_API_KEY')
+    api_key = os.environ.get('SG_DASHSCOPE_API_KEY')
     if not api_key:
-        raise Exception("Qwen API key tidak tersedia. Silakan tambahkan QWEN_API_KEY di environment variables.")
+        raise Exception("DashScope API key tidak tersedia. Silakan tambahkan SG_DASHSCOPE_API_KEY di environment variables.")
     if not DASHSCOPE_BASE_URL:
         raise Exception("DashScope URL tidak tersedia. Silakan tambahkan SG_DASHSCOPE_URL di environment variables.")
 
