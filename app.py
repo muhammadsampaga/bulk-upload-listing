@@ -313,6 +313,8 @@ def get_dashscope_base_url():
 DASHSCOPE_BASE_URL = get_dashscope_base_url()
 QWEN_MODEL = 'qwen3.8-max'
 DASHSCOPE_GENERATION_URL = f'{DASHSCOPE_BASE_URL}/services/aigc/multimodal-generation/generation'
+# Shown to the browser instead of the real error, which may contain key or config details
+AI_ERROR_MESSAGE = 'Layanan AI sedang bermasalah. Silakan coba lagi nanti.'
 
 
 def call_qwen(messages):
@@ -454,9 +456,8 @@ Respond ONLY dengan JSON object mengandung:
             'deskripsi_iklan': result.get('deskripsi_iklan', '')
         }
     except Exception as e:
-        error_msg = f"Professional Listing Generator Error: {str(e)}"
-        print(error_msg)
-        return {'error': error_msg}
+        print(f"Professional Listing Generator Error: {str(e)}")
+        return {'error': AI_ERROR_MESSAGE}
 
 def parse_listing_with_ai(description):
     try:
@@ -599,9 +600,8 @@ PENTING:
             result['area_warning'] = 'Lokasi AI belum cocok secara unik. Silakan pilih area dari hasil pencarian.'
         return result
     except Exception as e:
-        error_msg = f"AI Parser Error: {str(e)}"
-        print(error_msg)
-        return {'error': error_msg}
+        print(f"AI Parser Error: {str(e)}")
+        return {'error': AI_ERROR_MESSAGE}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
