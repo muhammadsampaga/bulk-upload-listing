@@ -50,7 +50,7 @@ Dependencies are managed with uv and installed automatically:
 - openai
 
 Required Environment Variables (add via Replit Secrets):
-- `SG_DASHSCOPE_API_KEY`: DashScope API key
+- `QWEN_API_KEY`: Qwen (DashScope) API key
 - `SG_DASHSCOPE_URL`: DashScope native API base URL, for example `https://.../api/v1`
 - `SESSION_SECRET`: Flask session secret key
 
@@ -123,7 +123,7 @@ Access the application at the Replit webview URL.
 25. durasi_sundul
 
 ## Environment Variables
-- `SG_DASHSCOPE_API_KEY`: DashScope API key
+- `QWEN_API_KEY`: Qwen (DashScope) API key
 - `SG_DASHSCOPE_URL`: DashScope native API base URL, for example `https://.../api/v1`
 - `SESSION_SECRET`: Flask session secret key (configured in Replit)
 
