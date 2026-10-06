@@ -302,13 +302,26 @@ ALLOWED_TIPE_PROPERTI = {
     'kost', 'hotel', 'pabrik', 'gudang', 'perkantoran', 'ruang_usaha', 'ruang usaha'
 }
 
+QWEN_KEY_PATTERN = re.compile(r'sk-[A-Za-z0-9._\-]{6,}', re.IGNORECASE)
+
+
 def get_dashscope_base_url():
     """Read the native DashScope API base URL from the environment."""
-    # Take only the http(s) URL so stray text in the variable never reaches the request or the logs
-    match = re.search(r'https?://[^\s\'"]+', os.environ.get('SG_DASHSCOPE_URL', ''))
-    url = match.group(0).rstrip('/') if match else ''
+    # Take only the URL or host so stray text in the variable never reaches the request or the logs
+    raw = QWEN_KEY_PATTERN.sub(' ', os.environ.get('SG_DASHSCOPE_URL', ''))
+    match = re.search(r'https?://[^\s\'"]+', raw)
+    if match:
+        url = match.group(0).rstrip('/')
+    else:
+        # Bare API host, e.g. "apihost: ws-xxx.ap-southeast-1.maas.aliyuncs.com"
+        host = re.search(r'[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+', raw)
+        if not host:
+            return ''
+        url = f'https://{host.group(0)}'
     if url.endswith('/compatible-mode/v1'):
         return f"{url[:-len('/compatible-mode/v1')]}/api/v1"
+    if not url.endswith('/api/v1'):
+        return f'{url}/api/v1'
     return url
 
 
@@ -320,16 +333,17 @@ AI_ERROR_MESSAGE = 'Layanan AI sedang bermasalah. Silakan coba lagi nanti.'
 
 
 def get_qwen_api_key():
-    return (os.environ.get('QWEN_API_KEY') or os.environ.get('SG_DASHSCOPE_API_KEY') or '').strip()
+    """Return the sk- key, ignoring any other text pasted into the variable."""
+    for name in ('QWEN_API_KEY', 'SG_DASHSCOPE_API_KEY', 'SG_DASHSCOPE_URL'):
+        match = QWEN_KEY_PATTERN.search(os.environ.get(name, ''))
+        if match:
+            return match.group(0)
+    return ''
 
 
 def redact_secrets(text):
     """Mask API keys before an error message is written to the logs."""
-    text = str(text)
-    api_key = get_qwen_api_key()
-    if api_key:
-        text = re.sub(re.escape(api_key), 'sk-***', text, flags=re.IGNORECASE)
-    return re.sub(r'sk-[A-Za-z0-9._\-]{6,}', 'sk-***', text, flags=re.IGNORECASE)
+    return QWEN_KEY_PATTERN.sub('sk-***', str(text))
 
 
 def call_qwen(messages):
