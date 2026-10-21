@@ -8,7 +8,9 @@ import shutil
 import json
 import secrets
 import re
-from datetime import datetime
+import tempfile
+from io import BytesIO
+from datetime import datetime, timedelta
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -117,20 +119,11 @@ def get_zip_filename():
     timestamp = datetime.now().strftime('%d-%b-%Y_%H-%M-%S')
     return os.path.join(UPLOAD_FOLDER, f'upl_{timestamp}.zip')
 
-def get_current_zip_file():
-    """Get the most recent ZIP file or generate new filename"""
-    # Look for most recent upl_*.zip file
-    try:
-        files = [f for f in os.listdir(UPLOAD_FOLDER) if f.startswith('upl_') and f.endswith('.zip')]
-        if files:
-            files.sort(reverse=True)
-            return os.path.join(UPLOAD_FOLDER, files[0])
-    except:
-        pass
-    
-    return get_zip_filename()
-
-# Excel columns per property type with proper spacing in headers
+# Positional contract from rumah123-listing #7553 (latest mass-upload template).
+BOOSTER_COLUMNS = [
+    'Status', 'aktivasi premier', 'aktivasi featured', 'aktivasi sundul',
+    'jadwal sundul', 'durasi sundul', 'hari sundul', 'jam sundul', 'tanggal akhir sundul'
+]
 EXCEL_COLUMNS_BY_TYPE = {
     'ruko': [
         'no', 'tipe properti', 'kategori', 'jenis properti', 'id area',
@@ -138,167 +131,100 @@ EXCEL_COLUMNS_BY_TYPE = {
         'judul iklan', 'deskripsi iklan', 'gambar cover utama',
         'kamar mandi', 'jumlah lantai',
         'sertifikat', 'kondisi properti', 'kondisi perabotan',
-        'selling point', 'fasilitas ruko', 'Status',
-        'aktivasi premier', 'aktivasi featured',
-        'jadwal sundul', 'durasi sundul'
-    ],
+        'selling point', 'fasilitas ruko'
+    ] + BOOSTER_COLUMNS,
     'rumah': [
         'no', 'tipe properti', 'kategori', 'jenis properti', 'id area',
         'luas tanah', 'luas bangunan', 'harga', 'periode sewa',
         'judul iklan', 'deskripsi iklan', 'gambar cover utama',
         'kamar tidur', 'kamar mandi', 'jumlah lantai', 'carport',
         'sertifikat', 'kondisi properti', 'kondisi perabotan',
-        'selling point', 'Status',
-        'aktivasi premier', 'aktivasi featured',
-        'jadwal sundul', 'durasi sundul'
-    ],
+        'selling point', 'hadap', 'fasilitas rumah', 'fasilitas perumahan', 'lebar jalan'
+    ] + BOOSTER_COLUMNS,
     'apartemen': [
         'no', 'tipe properti', 'kategori', 'jenis properti', 'id area',
         'luas bangunan', 'harga', 'periode sewa',
         'judul iklan', 'deskripsi iklan', 'gambar cover utama',
         'kamar tidur', 'kamar mandi', 'nomor lantai',
         'sertifikat', 'kondisi perabotan', 'kondisi properti',
-        'fasilitas lingkungan apartemen', 'selling point', 'Status',
-        'aktivasi premier', 'aktivasi featured',
-        'jadwal sundul', 'durasi sundul'
-    ],
+        'fasilitas lingkungan apartemen', 'selling point',
+        'tahun dibangun', 'pemandangan', 'fasilitas apartemen', 'peralatan'
+    ] + BOOSTER_COLUMNS,
     'tanah': [
         'no', 'tipe properti', 'kategori', 'jenis properti', 'id area',
         'luas tanah', 'satuan tanah', 'harga', 'satuan harga', 'periode sewa',
         'judul iklan', 'deskripsi iklan', 'gambar cover utama',
-        'sertifikat', 'selling point', 'Status',
-        'aktivasi premier', 'aktivasi featured',
-        'jadwal sundul', 'durasi sundul'
-    ],
+        'sertifikat', 'selling point', 'panjang tanah', 'lebar tanah'
+    ] + BOOSTER_COLUMNS,
     'villa': [
         'no', 'tipe properti', 'kategori', 'jenis properti', 'id area',
         'luas tanah', 'luas bangunan', 'harga', 'periode sewa',
         'judul iklan', 'deskripsi iklan', 'gambar cover utama',
         'kamar tidur', 'kamar mandi', 'jumlah lantai', 'carport',
         'sertifikat', 'kondisi properti', 'kondisi perabotan',
-        'selling point', 'Status',
-        'aktivasi premier', 'aktivasi featured',
-        'jadwal sundul', 'durasi sundul'
-    ],
+        'selling point', 'fasilitas kamar villa'
+    ] + BOOSTER_COLUMNS,
     'kost': [
         'no', 'tipe properti', 'kategori', 'jenis properti', 'id area',
         'luas tanah', 'luas bangunan', 'harga', 'periode sewa',
         'judul iklan', 'deskripsi iklan', 'gambar cover utama',
         'kamar tidur', 'kamar mandi', 'jumlah lantai', 'carport',
         'sertifikat', 'kondisi properti', 'kondisi perabotan',
-        'selling point', 'Status',
-        'aktivasi premier', 'aktivasi featured',
-        'jadwal sundul', 'durasi sundul'
-    ],
+        'selling point', 'fasilitas kamar kost', 'fasilitas kost'
+    ] + BOOSTER_COLUMNS,
     'hotel': [
         'no', 'tipe properti', 'kategori', 'jenis properti', 'id area',
         'luas tanah', 'luas bangunan', 'harga', 'periode sewa',
         'judul iklan', 'deskripsi iklan', 'gambar cover utama',
-        'kamar tidur', 'kamar mandi', 'jumlah lantai', 'carport',
+        'kamar tidur', 'kamar mandi', 'jumlah lantai',
         'sertifikat', 'kondisi properti', 'kondisi perabotan',
-        'selling point', 'Status',
-        'aktivasi premier', 'aktivasi featured',
-        'jadwal sundul', 'durasi sundul'
-    ],
+        'selling point', 'fasilitas sekitar hotel'
+    ] + BOOSTER_COLUMNS,
     'pabrik': [
         'no', 'tipe properti', 'kategori', 'jenis properti', 'id area',
         'luas tanah', 'luas bangunan', 'harga', 'periode sewa',
         'judul iklan', 'deskripsi iklan', 'gambar cover utama',
         'kamar mandi', 'jumlah lantai', 'carport',
         'sertifikat', 'kondisi properti', 'kondisi perabotan',
-        'selling point', 'fasilitas pabrik', 'Status',
-        'aktivasi premier', 'aktivasi featured',
-        'jadwal sundul', 'durasi sundul'
-    ],
+        'selling point', 'fasilitas pabrik'
+    ] + BOOSTER_COLUMNS,
     'gudang': [
         'no', 'tipe properti', 'kategori', 'jenis properti', 'id area',
         'luas tanah', 'luas bangunan', 'harga', 'periode sewa',
         'judul iklan', 'deskripsi iklan', 'gambar cover utama',
         'kamar mandi', 'jumlah lantai',
         'sertifikat', 'kondisi properti', 'kondisi perabotan',
-        'selling point', 'fasilitas gudang', 'Status',
-        'aktivasi premier', 'aktivasi featured',
-        'jadwal sundul', 'durasi sundul'
-    ],
+        'selling point', 'fasilitas gudang'
+    ] + BOOSTER_COLUMNS,
     'perkantoran': [
         'no', 'tipe properti', 'kategori', 'jenis properti', 'id area',
         'luas tanah', 'luas bangunan', 'harga', 'periode sewa',
         'judul iklan', 'deskripsi iklan', 'gambar cover utama',
         'kamar mandi', 'jumlah lantai',
         'sertifikat', 'kondisi properti', 'kondisi perabotan',
-        'selling point', 'fasilitas perkantoran', 'Status',
-        'aktivasi premier', 'aktivasi featured',
-        'jadwal sundul', 'durasi sundul'
-    ],
+        'selling point', 'fasilitas perkantoran'
+    ] + BOOSTER_COLUMNS,
     'ruang usaha': [
         'no', 'tipe properti', 'kategori', 'jenis properti', 'id area',
         'luas tanah', 'luas bangunan', 'harga', 'periode sewa',
         'judul iklan', 'deskripsi iklan', 'gambar cover utama',
         'kamar mandi', 'jumlah lantai',
         'sertifikat', 'kondisi properti', 'kondisi perabotan',
-        'selling point', 'fasilitas ruang usaha', 'Status',
-        'aktivasi premier', 'aktivasi featured',
-        'jadwal sundul', 'durasi sundul'
-    ],
-    'gedung': [
-        'no', 'tipe properti', 'kategori', 'jenis properti', 'id area',
-        'luas tanah', 'luas bangunan', 'harga', 'periode sewa',
-        'judul iklan', 'deskripsi iklan', 'gambar cover utama',
-        'kamar mandi', 'jumlah lantai',
-        'sertifikat', 'kondisi properti', 'kondisi perabotan',
-        'selling point', 'Status',
-        'aktivasi premier', 'aktivasi featured',
-        'jadwal sundul', 'durasi sundul'
-    ]
-}
-
-# Legacy global columns for backward compatibility (internal use only)
-GLOBAL_COLUMNS = [
-    'no', 'tipe_properti', 'kategori', 'jenis_properti', 'id_area',
-    'harga', 'periode_sewa',
-    'judul_iklan', 'deskripsi_iklan', 'gambar_cover_utama',
-    'sertifikat', 'kondisi_properti', 'kondisi_perabotan',
-    'selling_point', 'status', 'aktivasi_premier', 'aktivasi_featured',
-    'jadwal_sundul', 'durasi_sundul'
-]
-
-# Specific columns per property type (internal use, with underscores)
-SPECIFIC_COLUMNS = {
-    'rumah': ['luas_tanah', 'luas_bangunan', 'kamar_tidur', 'kamar_mandi', 'jumlah_lantai', 'carport'],
-    'apartemen': ['luas_bangunan', 'kamar_tidur', 'kamar_mandi', 'nomor_lantai', 'fasilitas_lingkungan'],
-    'tanah': ['luas_tanah', 'satuan_tanah', 'satuan_harga'],
-    'ruko': ['luas_tanah', 'luas_bangunan', 'kamar_mandi', 'jumlah_lantai', 'fasilitas_ruko'],
-    'villa': ['luas_tanah', 'luas_bangunan', 'kamar_tidur', 'kamar_mandi', 'jumlah_lantai', 'carport'],
-    'kost': ['luas_tanah', 'luas_bangunan', 'kamar_tidur', 'kamar_mandi', 'jumlah_lantai', 'carport'],
-    'hotel': ['luas_tanah', 'luas_bangunan', 'kamar_tidur', 'kamar_mandi', 'jumlah_lantai', 'carport'],
-    'pabrik': ['luas_tanah', 'luas_bangunan', 'kamar_mandi', 'jumlah_lantai', 'carport', 'fasilitas_pabrik'],
-    'gudang': ['luas_tanah', 'luas_bangunan', 'kamar_mandi', 'jumlah_lantai', 'fasilitas_gudang'],
-    'perkantoran': ['luas_tanah', 'luas_bangunan', 'kamar_mandi', 'jumlah_lantai', 'fasilitas_perkantoran'],
-    'ruang_usaha': ['luas_tanah', 'luas_bangunan', 'kamar_mandi', 'jumlah_lantai', 'fasilitas_ruang_usaha']
+        'selling point', 'fasilitas ruang usaha'
+    ] + BOOSTER_COLUMNS
 }
 
 def get_excel_columns(tipe_properti=None):
-    """Get columns for Excel based on property type (with spaces in headers)"""
-    if not tipe_properti:
-        return EXCEL_COLUMNS_BY_TYPE.get('ruko', EXCEL_COLUMNS_BY_TYPE['ruko'])
-    
-    # Normalize the property type first
-    tipe_normalized = normalize_tipe_properti(tipe_properti)
-    
-    # Check both formats
-    if tipe_properti in EXCEL_COLUMNS_BY_TYPE:
-        return EXCEL_COLUMNS_BY_TYPE[tipe_properti]
-    if tipe_normalized in EXCEL_COLUMNS_BY_TYPE:
-        return EXCEL_COLUMNS_BY_TYPE[tipe_normalized]
-    
-    # Default to ruko if not found
-    return EXCEL_COLUMNS_BY_TYPE.get('ruko', EXCEL_COLUMNS_BY_TYPE['ruko'])
+    tipe = (tipe_properti or 'ruko').strip().lower().replace('_', ' ')
+    if tipe not in EXCEL_COLUMNS_BY_TYPE:
+        raise ValueError(f'Tipe properti {tipe} tidak didukung template v3.')
+    return EXCEL_COLUMNS_BY_TYPE[tipe]
 
 # Legacy column name for backward compatibility
 EXCEL_COLUMNS = get_excel_columns()
 
 ALLOWED_TIPE_PROPERTI = {
-    'rumah', 'apartemen', 'ruko', 'tanah', 'villa', 'gedung',
+    'rumah', 'apartemen', 'ruko', 'tanah', 'villa',
     'kost', 'hotel', 'pabrik', 'gudang', 'perkantoran', 'ruang_usaha', 'ruang usaha'
 }
 
@@ -498,7 +424,7 @@ Analisa deskripsi properti dan ekstrak informasi berikut dalam format JSON.
 Jika informasi tidak tersedia atau tidak jelas, gunakan string kosong "".
 
 FIELD GLOBAL (Semua Tipe Properti):
-- tipe_properti: (rumah, apartemen, tanah, ruko, villa, kost, hotel, pabrik, gudang, perkantoran, ruang_usaha, gedung)
+- tipe_properti: (rumah, apartemen, tanah, ruko, villa, kost, hotel, pabrik, gudang, perkantoran, ruang_usaha)
 - kategori: (dijual, disewa)
 - jenis_properti: (baru, second, aset_bank)
 - location_area: nama area/kecamatan/kelurahan terkecil yang disebutkan, contoh "Renon"
@@ -522,7 +448,7 @@ FIELD GLOBAL (Semua Tipe Properti):
 - aktivasi_premier: (Yes, No)
 - aktivasi_featured: (Yes, No)
 - jadwal_sundul: (1 time daily, 2 times daily, 3 times daily)
-- durasi_sundul: misal "7d" atau "30 hari"
+- durasi_sundul: (7d, 14d, 30d)
 
 FIELD KHUSUS PER TIPE PROPERTI:
 Jika tipe_properti adalah RUMAH, ekstrak juga:
@@ -657,134 +583,165 @@ def init_excel(tipe_properti=None):
     if not os.path.exists(EXCEL_FILE):
         wb = Workbook()
         ws = wb.active
-        ws.title = "Data Properti"
-        columns = get_excel_columns()
+        ws.title = get_sheet_name(tipe_properti or 'ruko')
+        columns = get_excel_columns(tipe_properti)
         for idx, col in enumerate(columns, 1):
             ws.cell(row=1, column=idx, value=col)
-        wb.save(EXCEL_FILE)
+        save_workbook(wb)
 
 def get_sheet_name(tipe_properti):
     """Get the sheet name based on property type (lowercase)"""
-    # Normalize input first
-    tipe_normalized = normalize_tipe_properti(tipe_properti)
-    sheet_name_map = {
-        'rumah': 'rumah',
-        'apartemen': 'apartemen',
-        'tanah': 'tanah',
-        'ruko': 'ruko',
-        'villa': 'villa',
-        'kost': 'kost',
-        'hotel': 'hotel',
-        'pabrik': 'pabrik',
-        'gudang': 'gudang',
-        'perkantoran': 'perkantoran',
-        'ruang_usaha': 'ruang_usaha',
-        'gedung': 'gedung'
-    }
-    return sheet_name_map.get(tipe_normalized, 'data_properti')
+    return normalize_tipe_properti(tipe_properti).replace('_', ' ')
 
 def get_next_no(tipe_properti=None):
     """Get the next number for entry for specific property type"""
-    init_excel()
-    try:
-        wb = load_workbook(EXCEL_FILE)
-        
-        if tipe_properti:
-            # Get next number for specific property type
-            tipe_normalized = normalize_tipe_properti(tipe_properti)
-            sheet_name = get_sheet_name(tipe_normalized)
-            
-            if sheet_name in wb.sheetnames:
-                ws = wb[sheet_name]
-                max_no = 1
-                for row in ws.iter_rows(min_row=2, max_col=1, values_only=True):
-                    if row[0]:
-                        try:
-                            max_no = max(max_no, int(row[0]) + 1)
-                        except (ValueError, TypeError):
-                            pass
-                wb.close()
-                return max_no
-        
-        # If no property type specified, default to 1
-        wb.close()
-        return 1
-    except:
-        return 1
+    numbers = [int(item['no']) for item in map(listing_fields, read_excel_data())
+               if normalize_tipe_properti(str(item['tipe_properti'])) == normalize_tipe_properti(tipe_properti or 'ruko')]
+    return max(numbers, default=0) + 1
 
 def read_excel_data():
     """Read all data from all sheets in Excel"""
     init_excel()
+    wb = load_workbook(EXCEL_FILE)
     try:
-        wb = load_workbook(EXCEL_FILE)
         data = []
-        for sheet_name in wb.sheetnames:
-            ws = wb[sheet_name]
-            # Get headers from first row
-            headers = []
-            for cell in ws[1]:
-                if cell.value:
-                    headers.append(cell.value)
-            
-            # Read data rows
+        for ws in wb:
+            headers = [cell.value for cell in ws[1]]
+            names = {field_name(header) for header in headers if header}
+            if len(names) != sum(bool(header) for header in headers):
+                raise ValueError(f'Sheet {ws.title}: ada nama kolom duplikat.')
             for row in ws.iter_rows(min_row=2, values_only=True):
-                if row[0]:  # Only if 'no' is not empty
-                    data.append(dict(zip(headers, row)))
-        wb.close()  # Ensure workbook is closed
+                if not any(value not in (None, '') for value in row):
+                    continue
+                if not row[0]:
+                    raise ValueError(f'Sheet {ws.title}: ada data tanpa nomor listing.')
+                if any(not header and value not in (None, '') for header, value in zip(headers, row)):
+                    raise ValueError(f'Sheet {ws.title}: ada data tanpa nama kolom.')
+                item = {header: value for header, value in zip(headers, row) if header}
+                if not (item.get('tipe properti') or item.get('tipe_properti')):
+                    item['tipe properti'] = ws.title
+                data.append(item)
         return data
-    except:
-        return []
+    finally:
+        wb.close()
 
-def create_header_mapping(tipe_properti):
-    """Create mapping from Excel header (with spaces) to field name (with underscores)"""
-    mapping = {
-        'no': 'no',
-        'tipe properti': 'tipe_properti',
-        'kategori': 'kategori',
-        'jenis properti': 'jenis_properti',
-        'id area': 'id_area',
-        'luas tanah': 'luas_tanah',
-        'luas bangunan': 'luas_bangunan',
-        'kamar tidur': 'kamar_tidur',
-        'kamar mandi': 'kamar_mandi',
-        'jumlah lantai': 'jumlah_lantai',
-        'carport': 'carport',
-        'nomor lantai': 'nomor_lantai',
-        'fasilitas lingkungan': 'fasilitas_lingkungan',
-        'fasilitas lingkungan apartemen': 'fasilitas_lingkungan',
-        'satuan tanah': 'satuan_tanah',
-        'satuan harga': 'satuan_harga',
-        'harga': 'harga',
-        'periode sewa': 'periode_sewa',
-        'judul iklan': 'judul_iklan',
-        'deskripsi iklan': 'deskripsi_iklan',
-        'gambar cover utama': 'gambar_cover_utama',
-        'sertifikat': 'sertifikat',
-        'kondisi properti': 'kondisi_properti',
-        'kondisi perabotan': 'kondisi_perabotan',
-        'selling point': 'selling_point',
-        'fasilitas ruko': 'fasilitas_ruko',
-        'fasilitas pabrik': 'fasilitas_pabrik',
-        'fasilitas gudang': 'fasilitas_gudang',
-        'fasilitas perkantoran': 'fasilitas_perkantoran',
-        'fasilitas ruang usaha': 'fasilitas_ruang_usaha',
-        'Status': 'status',
-        'status': 'status',
-        'aktivasi premier': 'aktivasi_premier',
-        'aktivasi featured': 'aktivasi_featured',
-        'jadwal sundul': 'jadwal_sundul',
-        'durasi sundul': 'durasi_sundul'
-    }
-    return mapping
+def field_name(header):
+    name = str(header).strip().lower().replace(' ', '_')
+    return {'luas': 'luas_bangunan', 'periode': 'periode_sewa', 'kamar': 'kamar_tidur',
+            'fasilitas': 'fasilitas_lingkungan',
+            'fasilitas_lingkungan_apartemen': 'fasilitas_lingkungan'}.get(name, name)
+
+def listing_fields(data):
+    return {field_name(key): value for key, value in data.items()}
+
+
+def normalize_sundul(data):
+    """Translate legacy daily schedules and validate the six v3 SUNDUL cells."""
+    fields = ('aktivasi_sundul', 'jadwal_sundul', 'durasi_sundul',
+              'hari_sundul', 'jam_sundul', 'tanggal_akhir_sundul')
+    values = {key: str(data.get(key) or '').strip() for key in fields}
+    mode = values['aktivasi_sundul'].casefold()
+    if not mode:
+        mode = 'frequently' if values['jadwal_sundul'] or values['durasi_sundul'] else 'none'
+        if mode == 'none' and any(values[key] for key in fields[3:]):
+            raise ValueError('Pilih aktivasi Day Selection untuk jadwal berdasarkan hari.')
+    if mode == 'none':
+        return dict(zip(fields, ('NONE', '', '', '', '', '')))
+    if mode == 'frequently':
+        if values['jadwal_sundul'] not in ('1 time daily', '2 times daily', '3 times daily'):
+            raise ValueError('Pilih jadwal sundul 1, 2, atau 3 kali sehari.')
+        duration = re.fullmatch(r'(7|14|30)\s*(?:d|hari)', values['durasi_sundul'], re.IGNORECASE)
+        if not duration:
+            raise ValueError('Durasi sundul harus 7d, 14d, atau 30d.')
+        return dict(zip(fields, ('Frequently', values['jadwal_sundul'], duration[1] + 'd', '', '', '')))
+    if mode == 'day selection':
+        days = [day.strip().title() for day in values['hari_sundul'].split(';')]
+        if not days or any(day not in ('Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu') for day in days):
+            raise ValueError('Hari sundul harus nama hari dipisahkan titik koma, misalnya Senin;Jumat.')
+        if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', values['jam_sundul']):
+            raise ValueError('Jam sundul harus HH:MM, misalnya 09:00.')
+        try:
+            end = datetime.strptime(values['tanggal_akhir_sundul'], '%Y-%m-%d')
+        except ValueError:
+            try:
+                end = datetime.strptime(values['tanggal_akhir_sundul'], '%d-%m-%Y')
+            except ValueError:
+                raise ValueError('Tanggal akhir sundul tidak valid.') from None
+        today_wib = (datetime.utcnow() + timedelta(hours=7)).date()
+        if end.date() < today_wib:
+            raise ValueError('Tanggal akhir sundul sudah lewat; perbarui jadwal sebelum export.')
+        return dict(zip(fields, ('Day Selection', '', '', ';'.join(dict.fromkeys(days)),
+                                 values['jam_sundul'], end.strftime('%d-%m-%Y'))))
+    raise ValueError('Aktivasi sundul harus NONE, Frequently, atau Day Selection.')
+
+
+def export_excel():
+    """Build v3 in memory; legacy columns/data remain in the source workbook."""
+    wb = Workbook()
+    wb.remove(wb.active)
+    seen = set()
+    for item in read_excel_data():
+        data = listing_fields(item)
+        tipe = str(data.get('tipe_properti') or '').strip().lower().replace('_', ' ')
+        columns = get_excel_columns(tipe)
+        no = normalize_area_id(data.get('no'))
+        if not no.isdigit() or int(no) < 1 or (tipe, no) in seen:
+            raise ValueError(f'{tipe}: nomor listing tidak valid atau duplikat ({no}).')
+        seen.add((tipe, no))
+        allowed = {field_name(col) for col in columns}
+        # ponytail: hotel carport is retained locally; export it when the backend supports it.
+        extra = [key for key, value in data.items() if key not in allowed
+                 and not (tipe == 'hotel' and key == 'carport') and value not in (None, '')]
+        if extra:
+            raise ValueError(f'{tipe} no {no}: kolom belum didukung v3: {", ".join(extra)}.')
+        try:
+            data.update(normalize_sundul(data))
+        except ValueError as error:
+            raise ValueError(f'{tipe} no {no}: {error}') from error
+        data.update(no=int(no), tipe_properti=tipe)
+        if tipe not in wb.sheetnames:
+            wb.create_sheet(tipe).append(columns)
+        wb[tipe].append([data.get(field_name(col), '') for col in columns])
+    if not wb.sheetnames:
+        wb.create_sheet('ruko').append(get_excel_columns('ruko'))
+    output = BytesIO()
+    wb.save(output)
+    wb.close()
+    output.seek(0)
+    return output
+
+
+def form_listing(tipe_properti):
+    # ponytail: optional v3 property fields stay blank/preserved; add UI controls when needed.
+    fields = [field_name(col) for col in get_excel_columns(tipe_properti)]
+    data = {key: request.form[key] for key in fields if key in request.form}
+    data['tipe_properti'] = tipe_properti
+    data.update(normalize_sundul(data))
+    return data
+
+
+def save_workbook(wb):
+    fd, path = tempfile.mkstemp(dir=os.path.dirname(EXCEL_FILE), suffix='.xlsx.tmp')
+    os.close(fd)
+    try:
+        wb.save(path)
+        os.replace(path, EXCEL_FILE)
+    finally:
+        wb.close()
+        if os.path.exists(path):
+            os.remove(path)
+
 
 def save_to_excel(data, tipe_properti=None):
     """Save data to Excel in the appropriate sheet based on property type"""
-    init_excel()
+    init_excel(tipe_properti)
     
     # Determine sheet name
     sheet_name = get_sheet_name(tipe_properti) if tipe_properti else "Data Properti"
     
     wb = load_workbook(EXCEL_FILE)
+    if sheet_name == 'ruang usaha' and 'ruang_usaha' in wb.sheetnames:
+        wb['ruang_usaha'].title = sheet_name
     
     # Create sheet if it doesn't exist
     if sheet_name not in wb.sheetnames:
@@ -795,29 +752,15 @@ def save_to_excel(data, tipe_properti=None):
     else:
         ws = wb[sheet_name]
     
-    # Get columns from sheet header
-    headers = []
-    for cell in ws[1]:
-        if cell.value:
-            headers.append(cell.value)
-    
-    # Create mapping for converting field names
-    header_mapping = create_header_mapping(tipe_properti)
-    
-    # Build row data based on headers
-    row_data = []
-    for header in headers:
-        # Try to get value using header name first (with spaces)
-        value = data.get(header, '')
-        # If not found, try mapping to underscore version and get from data
-        if not value:
-            field_name = header_mapping.get(header, header.lower().replace(' ', '_'))
-            value = data.get(field_name, '')
-        row_data.append(value)
-    
-    ws.append(row_data)
-    wb.save(EXCEL_FILE)
-    wb.close()  # Ensure file is properly closed
+    # Append new storage fields without rewriting or dropping legacy columns.
+    existing = {field_name(cell.value) for cell in ws[1] if cell.value}
+    for column in get_excel_columns(tipe_properti):
+        if field_name(column) not in existing:
+            ws.cell(row=1, column=ws.max_column + 1, value=column)
+    headers = [cell.value for cell in ws[1]]
+    data = listing_fields(data)
+    ws.append([data.get(field_name(header), '') if header else '' for header in headers])
+    save_workbook(wb)
 
 def update_excel_row(tipe_properti, no, updated_data):
     """Update an existing row in Excel"""
@@ -825,78 +768,76 @@ def update_excel_row(tipe_properti, no, updated_data):
     sheet_name = get_sheet_name(tipe_properti)
     
     wb = load_workbook(EXCEL_FILE)
+    if sheet_name == 'ruang usaha' and 'ruang_usaha' in wb.sheetnames:
+        wb['ruang_usaha'].title = sheet_name
     if sheet_name not in wb.sheetnames:
         wb.close()
-        return
+        raise ValueError('Sheet listing tidak ditemukan.')
     
     ws = wb[sheet_name]
+    existing = {field_name(cell.value) for cell in ws[1] if cell.value}
+    for column in get_excel_columns(tipe_properti):
+        if field_name(column) not in existing:
+            ws.cell(row=1, column=ws.max_column + 1, value=column)
     
-    # Get headers
-    headers = []
-    for cell in ws[1]:
-        if cell.value:
-            headers.append(cell.value)
+    headers = [cell.value for cell in ws[1]]
     
     # Find and update row
     for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=False), start=2):
         if row[0].value and str(row[0].value) == str(no):
-            # Create mapping for converting field names
-            header_mapping = create_header_mapping(tipe_properti)
-            
-            # Update each cell in the row
             for col_idx, header in enumerate(headers, 1):
-                # Try to get value using header name first (with spaces)
-                value = updated_data.get(header, '')
-                # If not found, try mapping to underscore version
-                if not value:
-                    field_name = header_mapping.get(header, header.lower().replace(' ', '_'))
-                    value = updated_data.get(field_name, '')
-                
-                ws.cell(row=row_idx, column=col_idx, value=value)
+                if not header:
+                    continue
+                field = field_name(header)
+                if field in updated_data:
+                    ws.cell(row=row_idx, column=col_idx, value=updated_data[field])
             break
+    else:
+        wb.close()
+        raise ValueError('Nomor listing tidak ditemukan.')
     
-    wb.save(EXCEL_FILE)
-    wb.close()
+    save_workbook(wb)
 
 def create_zip():
     """Create ZIP with structure: {tipe_properti}/{no}/ dengan Excel file"""
     zip_file = get_zip_filename()
     
-    if os.path.exists(zip_file):
-        os.remove(zip_file)
-    
-    with zipfile.ZipFile(zip_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        # Add Excel file - ensure it exists and is readable
-        if os.path.exists(EXCEL_FILE):
+    excel_data = export_excel().getvalue()
+    fd, temporary = tempfile.mkstemp(dir=UPLOAD_FOLDER, suffix='.zip.tmp')
+    os.close(fd)
+    try:
+        with zipfile.ZipFile(temporary, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            zipf.writestr('mass_upload_template.xlsx', excel_data)
+            for root, dirs, files in os.walk(UPLOAD_FOLDER):
+                for file in files:
+                    if allowed_file(file):
+                        parts = [p for p in os.path.relpath(root, UPLOAD_FOLDER).split(os.sep) if p != 'images']
+                        parts = ['ruang usaha' if p == 'ruang_usaha' else p for p in parts]
+                        zipf.write(os.path.join(root, file), '/'.join(parts + [file]))
+            exported = load_workbook(BytesIO(excel_data), read_only=True)
+            archive_paths = set(zipf.namelist())
             try:
-                # Read Excel file into memory to avoid file lock issues
-                with open(EXCEL_FILE, 'rb') as f:
-                    excel_data = f.read()
-                zipf.writestr('mass_upload_template.xlsx', excel_data)
-            except Exception as e:
-                print(f"Warning: Could not add Excel to ZIP: {str(e)}")
-        
-        # Walk through uploads folder and add image files with corrected path structure
-        for root, dirs, files in os.walk(UPLOAD_FOLDER):
-            for file in files:
-                if file.endswith(('.png', '.jpg', '.jpeg', '.gif')):
-                    file_path = os.path.join(root, file)
-                    # Get relative path from UPLOAD_FOLDER
-                    rel_path = os.path.relpath(file_path, UPLOAD_FOLDER)
-                    # Don't include 'images' folder in the archive path
-                    # Example: uploads/rumah/1/cover.jpg -> rumah/1/cover.jpg
-                    parts = rel_path.split(os.sep)
-                    # Filter out 'images' directory
-                    filtered_parts = [p for p in parts if p != 'images']
-                    arcname = os.sep.join(filtered_parts)
-                    try:
-                        zipf.write(file_path, arcname)
-                    except Exception as e:
-                        print(f"Warning: Could not add {file_path} to ZIP: {str(e)}")
+                for ws in exported:
+                    columns = get_excel_columns(ws.title)
+                    for row in ws.iter_rows(min_row=2, values_only=True):
+                        cover = row[columns.index('gambar cover utama')]
+                        if not cover or f'{ws.title}/{row[0]}/{cover}' not in archive_paths:
+                            raise ValueError(f'{ws.title} no {row[0]}: file cover tidak ditemukan di ZIP.')
+            finally:
+                exported.close()
+        os.replace(temporary, zip_file)
+    finally:
+        if os.path.exists(temporary):
+            os.remove(temporary)
+    return zip_file
 
 @app.route('/')
 def index():
-    data = read_excel_data()
+    try:
+        data = read_excel_data()
+    except Exception as error:
+        flash(f'Workbook tidak bisa dibaca: {error}', 'danger')
+        data = []
     return render_template('index.html', data=data)
 
 @app.route('/areas/search')
@@ -976,6 +917,8 @@ def submit():
         if id_area and id_area not in AREAS_BY_ID:
             flash('ID area tidak valid. Silakan pilih area dari hasil pencarian.', 'danger')
             return redirect(url_for('index'))
+
+        data = form_listing(tipe_properti)
         
         # Get next number for this specific property type
         no = get_next_no(tipe_properti)
@@ -1006,33 +949,7 @@ def submit():
                     filename = f'foto{idx}.{ext}'
                     file.save(os.path.join(property_folder, filename))
         
-        # Collect all form data including dynamic fields
-        data = {
-            'no': no,
-            'tipe_properti': tipe_properti,
-            'kategori': request.form.get('kategori', ''),
-            'jenis_properti': request.form.get('jenis_properti', ''),
-            'id_area': id_area,
-            'harga': request.form.get('harga', ''),
-            'periode_sewa': request.form.get('periode_sewa', ''),
-            'judul_iklan': request.form.get('judul_iklan', ''),
-            'deskripsi_iklan': request.form.get('deskripsi_iklan', ''),
-            'gambar_cover_utama': cover_filename,
-            'sertifikat': request.form.get('sertifikat', ''),
-            'kondisi_properti': request.form.get('kondisi_properti', ''),
-            'kondisi_perabotan': request.form.get('kondisi_perabotan', ''),
-            'selling_point': request.form.get('selling_point', ''),
-            'status': request.form.get('status', ''),
-            'aktivasi_premier': request.form.get('aktivasi_premier', ''),
-            'aktivasi_featured': request.form.get('aktivasi_featured', ''),
-            'jadwal_sundul': request.form.get('jadwal_sundul', ''),
-            'durasi_sundul': request.form.get('durasi_sundul', '')
-        }
-        
-        # Add specific fields for this property type
-        if tipe_properti in SPECIFIC_COLUMNS:
-            for field in SPECIFIC_COLUMNS[tipe_properti]:
-                data[field] = request.form.get(field, '')
+        data.update(no=no, id_area=id_area, gambar_cover_utama=cover_filename)
         
         save_to_excel(data, tipe_properti)
         create_zip()
@@ -1045,18 +962,20 @@ def submit():
 
 @app.route('/download/excel')
 def download_excel():
-    if os.path.exists(EXCEL_FILE):
-        return send_file(EXCEL_FILE, as_attachment=True, download_name='mass_upload_template.xlsx')
-    flash('File Excel tidak ditemukan', 'warning')
+    try:
+        return send_file(export_excel(), as_attachment=True, download_name='mass_upload_template.xlsx')
+    except Exception as error:
+        flash(f'Export dibatalkan: {error}', 'danger')
     return redirect(url_for('index'))
 
 @app.route('/download/zip')
 def download_zip():
-    zip_file = get_current_zip_file()
-    if os.path.exists(zip_file):
+    try:
+        zip_file = create_zip()
         filename = os.path.basename(zip_file)
         return send_file(zip_file, as_attachment=True, download_name=filename)
-    flash('File ZIP tidak ditemukan', 'warning')
+    except Exception as error:
+        flash(f'Export dibatalkan: {error}', 'danger')
     return redirect(url_for('index'))
 
 @app.route('/load-data/<tipe>/<no>', methods=['GET'])
@@ -1071,12 +990,15 @@ def load_data(tipe, no):
             item_tipe = item.get('tipe properti') or item.get('tipe_properti', '')
             item_no = str(item.get('no', ''))
             
-            if item_tipe.lower() == tipe.lower() and item_no == str(no):
+            if normalize_tipe_properti(item_tipe) == normalize_tipe_properti(tipe) and item_no == str(no):
                 # Convert spaces to underscores in keys for JavaScript
-                result = {}
-                for key, value in item.items():
-                    new_key = key.lower().replace(' ', '_')
-                    result[new_key] = value
+                result = listing_fields(item)
+                try:
+                    result.update(normalize_sundul(result))
+                    if result['tanggal_akhir_sundul']:
+                        result['tanggal_akhir_sundul'] = datetime.strptime(result['tanggal_akhir_sundul'], '%d-%m-%Y').strftime('%Y-%m-%d')
+                except ValueError:
+                    pass  # Keep invalid legacy values editable so the user can repair them.
                 area = AREAS_BY_ID.get(normalize_area_id(result.get('id_area', '')))
                 result['area'] = public_area(area) if area else None
                 return jsonify(result)
@@ -1106,35 +1028,8 @@ def update_data():
             flash('ID area tidak valid. Silakan pilih area dari hasil pencarian.', 'danger')
             return redirect(url_for('index'))
         
-        # Read current data to delete old row
-        data = read_excel_data()
-        
-        # Collect updated form data
-        updated_data = {
-            'no': no,
-            'tipe_properti': tipe_properti,
-            'kategori': request.form.get('kategori', ''),
-            'jenis_properti': request.form.get('jenis_properti', ''),
-            'id_area': id_area,
-            'harga': request.form.get('harga', ''),
-            'periode_sewa': request.form.get('periode_sewa', ''),
-            'judul_iklan': request.form.get('judul_iklan', ''),
-            'deskripsi_iklan': request.form.get('deskripsi_iklan', ''),
-            'sertifikat': request.form.get('sertifikat', ''),
-            'kondisi_properti': request.form.get('kondisi_properti', ''),
-            'kondisi_perabotan': request.form.get('kondisi_perabotan', ''),
-            'selling_point': request.form.get('selling_point', ''),
-            'status': request.form.get('status', ''),
-            'aktivasi_premier': request.form.get('aktivasi_premier', ''),
-            'aktivasi_featured': request.form.get('aktivasi_featured', ''),
-            'jadwal_sundul': request.form.get('jadwal_sundul', ''),
-            'durasi_sundul': request.form.get('durasi_sundul', '')
-        }
-        
-        # Add specific fields for this property type
-        if tipe_properti in SPECIFIC_COLUMNS:
-            for field in SPECIFIC_COLUMNS[tipe_properti]:
-                updated_data[field] = request.form.get(field, '')
+        updated_data = form_listing(tipe_properti)
+        updated_data.update(no=no, id_area=id_area)
         
         # Update Excel - remove old row and add new one
         update_excel_row(tipe_properti, no, updated_data)
@@ -1165,7 +1060,9 @@ def delete_data():
         # Delete from Excel
         if os.path.exists(EXCEL_FILE):
             wb = load_workbook(EXCEL_FILE)
-            sheet_name = tipe_properti
+            sheet_name = get_sheet_name(tipe_properti)
+            if sheet_name not in wb.sheetnames and tipe_properti in wb.sheetnames:
+                sheet_name = tipe_properti
             
             if sheet_name in wb.sheetnames:
                 ws = wb[sheet_name]
@@ -1183,7 +1080,7 @@ def delete_data():
                     ws.delete_rows(row_idx, 1)
                 
                 if rows_to_delete:
-                    wb.save(EXCEL_FILE)
+                    save_workbook(wb)
             
             wb.close()
         

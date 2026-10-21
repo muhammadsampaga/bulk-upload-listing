@@ -445,7 +445,6 @@
                             <option value="gudang">Gudang</option>
                             <option value="perkantoran">Perkantoran</option>
                             <option value="ruang_usaha">Ruang Usaha</option>
-                            <option value="gedung">Gedung</option>
                         </select>
                     </div>
 
@@ -589,6 +588,15 @@
                     </div>
 
                     <div class="col-md-3 mb-3">
+                        <label for="aktivasi_sundul" class="form-label">Aktivasi Sundul</label>
+                        <select class="form-select" id="aktivasi_sundul" name="aktivasi_sundul">
+                            <option value="">Otomatis dari jadwal harian</option>
+                            <option value="NONE">Tanpa sundul</option>
+                            <option value="Frequently">Frequently (harian)</option>
+                            <option value="Day Selection">Day Selection (pilih hari)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
                         <label for="jadwal_sundul" class="form-label">Jadwal Sundul</label>
                         <select class="form-select" id="jadwal_sundul" name="jadwal_sundul">
                             <option value="">Pilih</option>
@@ -600,8 +608,26 @@
 
                     <div class="col-md-3 mb-3">
                         <label for="durasi_sundul" class="form-label">Durasi Sundul</label>
-                        <input type="text" class="form-control" id="durasi_sundul" name="durasi_sundul" placeholder="Contoh: 7d, 30 hari">
+                        <select class="form-select" id="durasi_sundul" name="durasi_sundul">
+                            <option value="">Pilih</option>
+                            <option value="7d">7 hari</option>
+                            <option value="14d">14 hari</option>
+                            <option value="30d">30 hari</option>
+                        </select>
                     </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="hari_sundul" class="form-label">Hari Sundul (Day Selection)</label>
+                        <input type="text" class="form-control" id="hari_sundul" name="hari_sundul" placeholder="Senin;Jumat" aria-describedby="sundul_help">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="jam_sundul" class="form-label">Jam Sundul (WIB)</label>
+                        <input type="time" class="form-control" id="jam_sundul" name="jam_sundul">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="tanggal_akhir_sundul" class="form-label">Tanggal Akhir Sundul</label>
+                        <input type="date" class="form-control" id="tanggal_akhir_sundul" name="tanggal_akhir_sundul">
+                    </div>
+                    <p id="sundul_help" class="form-text">Frequently: isi jadwal dan durasi. Day Selection: isi hari (pisahkan dengan ;), jam WIB, dan tanggal akhir. Kosongkan semuanya untuk tanpa sundul.</p>
                 </div>
 
                 <!-- SPECIFIC FIELDS SECTION -->
@@ -875,8 +901,7 @@
                     { name: 'luas_bangunan', label: 'Luas Bangunan (m²)', type: 'number', placeholder: '' },
                     { name: 'kamar_tidur', label: 'Kamar Tidur', type: 'number', placeholder: '' },
                     { name: 'kamar_mandi', label: 'Kamar Mandi', type: 'number', placeholder: '' },
-                    { name: 'jumlah_lantai', label: 'Jumlah Lantai', type: 'number', placeholder: '' },
-                    { name: 'carport', label: 'Carport', type: 'number', placeholder: '' }
+                    { name: 'jumlah_lantai', label: 'Jumlah Lantai', type: 'number', placeholder: '' }
                 ]
             },
             pabrik: {
@@ -918,15 +943,6 @@
                     { name: 'kamar_mandi', label: 'Kamar Mandi', type: 'number', placeholder: '' },
                     { name: 'jumlah_lantai', label: 'Jumlah Lantai', type: 'number', placeholder: '' },
                     { name: 'fasilitas_ruang_usaha', label: 'Fasilitas Ruang Usaha', type: 'textarea', placeholder: 'Fasilitas tambahan' }
-                ]
-            },
-            gedung: {
-                title: 'Gedung',
-                fields: [
-                    { name: 'luas_tanah', label: 'Luas Tanah (m²)', type: 'number', placeholder: '' },
-                    { name: 'luas_bangunan', label: 'Luas Bangunan (m²)', type: 'number', placeholder: '' },
-                    { name: 'kamar_mandi', label: 'Kamar Mandi', type: 'number', placeholder: '' },
-                    { name: 'jumlah_lantai', label: 'Jumlah Lantai', type: 'number', placeholder: '' }
                 ]
             }
         };
@@ -1336,6 +1352,9 @@
                 areaSearch.focus();
                 return;
             }
+            document.getElementById('gambar_cover').required = !editMode;
+            document.getElementById('gambar_lainnya').required = !editMode;
+            if (!form.reportValidity()) return;
             
             if (!jenis_properti) {
                 alert('❌ Jenis Properti adalah wajib diisi!');
@@ -1371,15 +1390,11 @@
                     .join('\n');
             });
             
-            const formData = new FormData(form);
-            
-            const url = editMode ? '/update-data' : '{{ url_for("submit") }}';
-            const method = editMode ? 'POST' : 'POST';
-            
+            form.action = editMode ? '/update-data' : '{{ url_for("submit") }}';
+            form.method = 'POST';
             if (editMode) {
-                // Add edit metadata
-                formData.append('tipe_properti', form.dataset.tipe);
-                formData.append('no', form.dataset.no);
+                document.getElementById('tipe_properti').value = form.dataset.tipe;
+                document.getElementById('no').value = form.dataset.no;
             }
             
             // Show loading spinner and disable submit button
@@ -1391,22 +1406,8 @@
             cancelBtn.disabled = true;
             submitLoading.style.display = 'block';
             
-            fetch(url, {
-                method: method,
-                body: formData
-            })
-            .then(response => response.text())
-            .then(html => {
-                // Reload page or show success message
-                window.location.reload();
-            })
-            .catch(error => {
-                alert('Terjadi kesalahan: ' + error.message);
-                // Hide loading and re-enable button on error
-                submitBtn.disabled = false;
-                cancelBtn.disabled = false;
-                submitLoading.style.display = 'none';
-            });
+            // Native navigation preserves server validation messages across redirects.
+            form.submit();
         }
         
         function cancelEdit() {
